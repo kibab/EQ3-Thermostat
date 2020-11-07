@@ -1,10 +1,10 @@
 #!/usr/bin/python3
 # -*-coding: utf-8 -*-
 
+import argparse
 import datetime
 import subprocess
 import time
-
 
 class EQ3Thermostat(object):
 
@@ -18,17 +18,20 @@ class EQ3Thermostat(object):
         """Reads the current temperature from the thermostat. We need to kill
         the gatttool process as the --listen option puts it into an infinite
         loop."""
-        p = subprocess.Popen(["timeout", "-s", "INT", "2", "gatttool", "-b",
+        print("Starting communication with EQ3 @ {}".format(self.address))
+        p = subprocess.Popen(["timeout", "-s", "INT", "10", "gatttool", "-b",
                               self.address, "--char-write-req", "-a", "0x0411",
                               "-n", "03", "--listen"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = p.communicate()
         value_string = out.decode("utf-8")
+        print("EQ3 @ {}: read {}, err {}".format(self.address, value_string, err))
+
 
         if "Notification handle" in value_string:
             value_string_splt = value_string.split()
-            temperature = value_string_splt[-1]
-            locked = value_string_splt[-4]
+            temperature = value_string_splt[-10]
+            locked = value_string_splt[-13]
             try:
                 subprocess.Popen.kill(p)
             except ProcessLookupError:
@@ -45,6 +48,9 @@ class EQ3Thermostat(object):
                 self.temperature = int(temperature, 16) / 2
             except Exception as e:
                 print("Getting temperature of {} failed {}".format(self.address, e))
+
+            print("=== EQ3 @ {}: temperature {}".format(self.address, self.temperature))
+
 
     def activate_boostmode(self):
         """Boostmode fully opens the thermostat for 300sec."""
@@ -151,12 +157,18 @@ class EQ3Thermostat(object):
         time.sleep(3)
 
 if __name__ == '__main__':
-    h = EQ3Thermostat("00:AA:BB:CC:DD:EE")
-    # Take some time
-    time.sleep(5)
-    # Deactivate autonomous behavior on the thermostat
-    h.set_manual_mode()
-    # Set current date
-    h.set_time(datetime.datetime.now())
-    # Set the current temperature
-    h.set_temperature(20)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("address", help="Thermostat Bluetooth address.")
+    parser.add_argument("--temperature", default=-1, type=int, required=False, help="If set, set this temperature on the thermostat.")
+    args = parser.parse_args()
+    print("Address: {}".format(args.address))
+    if args.temperature > 0:
+      print("  Temperature to set: {}".format(args.temperature))
+
+    h = EQ3Thermostat(args.address)
+
+    if args.temperature > 0:
+      print("  Temperature to set: {}".format(args.temperature))
+      h.set_temperature(args.temperature)
+    else:
+      print("  Current temperature set: {}".format(h.temperature))
